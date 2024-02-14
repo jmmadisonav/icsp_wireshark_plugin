@@ -4,7 +4,7 @@ The ICSP Wireshark plugin is a dissector specifically tailored for AMX ICSP pack
 ## Setup & Process
 1. Download the files [icsp_protocol.lua](icsp_protocol.lua) and [icsp_definitions.lua](icsp_definitions.lua).
 
-2. Copy the downloaded files `svsi_protocol.lua` and `icsp_definitions.lua` to your Wireshark LUA plugins folder.
+2. Copy the downloaded files `icsp_protocol.lua` and `icsp_definitions.lua` to your Wireshark LUA plugins folder.
 
 3. Locate your Wireshark LUA plugins folder by navigating to Help -> About Wireshark. Then, select the "Folders" tab and look for either "Global Lua Plugins" or "Personal Lua Plugins."
 
