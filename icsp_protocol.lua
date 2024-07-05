@@ -91,7 +91,7 @@ local my_info = {
   message_data_configuration_flag = ProtoField.uint8("icsp.message_data_configuration_flag", "Configuration Flags", base.HEX, configuration_flags)
   message_data_file_type = ProtoField.uint16("icsp.message_data_file_type", "File Type", base.HEX, file_types)
   message_data_file_function = ProtoField.uint16("icsp.message_data_file_function", "File Function", base.HEX)
-  message_data_file_data = ProtoField.uint16("icsp.message_data_file_data", "File data", base.HEX)
+  message_data_file_data = ProtoField.none("icsp.message_data_file_data", "File data", base.HEX)
 
   icsp_protocol.fields = {protocol_field, length_of_data, flags, destination_dps, destination_device, destination_port, 
                           destination_system, source_dps, source_device, source_port, source_system, allowed_hop_count,
@@ -581,7 +581,9 @@ local my_info = {
       then
         message_command_subtree:add(message_data_file_type, buffer(22,2))
         message_command_subtree:add(message_data_file_function, buffer(24,2))
-        message_command_subtree:add(message_data_file_data, buffer(26,length - 27))
+        if length - 27 > 0 then
+          message_command_subtree:add(message_data_file_data, buffer(26,length - 27))
+        end
       end
 
     if buffer(20,2):uint() == 0x010b
