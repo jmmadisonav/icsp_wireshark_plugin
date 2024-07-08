@@ -384,6 +384,7 @@ local my_info = {
               message_command_subtree:add(skipped_bytes, buffer(current_index, 2))
               current_index = current_index + 2
               message_command_subtree:add(message_data_mac_address, buffer(current_index, 6))
+              current_index = current_index + 6
             end
           else
             -- I don't know what to do with this address lets skip it...
@@ -486,8 +487,22 @@ local my_info = {
         message_command_subtree:add(message_data_extended_address_type, buffer(packet_index + 30,1))
         message_command_subtree:add(message_data_extended_address_length, buffer(packet_index + 31,1))
         message_command_subtree:add(message_data_ipv4_address, buffer(packet_index + 32,4))
-        packet_index = packet_index + 36
+        if packet_index + 36 > packet_start + buffer(packet_index + 1,2):uint() + 2
+            then
+              packet_index = packet_index + 36
+            else
+              -- Padding for some reason?
+              packet_index = length - 1
+            end
+
+        
         end
+
+      if mc == "Request Devices Online" or 
+         mc == "Request Devices Online EOT"
+          then 
+          packet_index = length - 1
+      end
 
       if mc == "Ping Request" then -- 0x0501
         message_command_subtree:add(message_data_device, buffer(packet_index + 22,2))
@@ -632,15 +647,21 @@ local my_info = {
               print("Extended address " .. buffer(current_index, buffer(current_index-1,1):uint()))
               current_index = current_index + buffer(current_index-1,1):uint()
             end
-        packet_index = current_index
+        packet_index = length - 1
         end
 
 
-       if buffer(packet_start + 20,2):uint() == 0x00a8
+      if buffer(packet_start + 20,2):uint() == 0x00a8
         then -- Undocumented
         message_command_subtree:add(skipped_bytes, buffer(packet_index + 22, 4))
         packet_index = packet_index + 26
         end
+
+      if buffer(packet_start + 20,2):uint() == 0x010d
+        then -- Undocumented
+        packet_index = packet_index + 22
+        end
+
 
       my_checksum = calculate_iscp_checksum(buffer(packet_start, packet_index - packet_start))
       if my_checksum == buffer(packet_index, 1):uint() then
