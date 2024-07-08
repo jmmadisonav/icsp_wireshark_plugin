@@ -144,6 +144,7 @@ local my_info = {
       --  .. " loop: " .. loop_num)
       subtree:add(protocol_field, buffer(packet_index + 0,1))
       subtree:add(length_of_data, buffer(packet_index + 1,2))
+      local length_data = buffer(packet_index + 1,2):uint()
       subtree:add(flags, buffer(packet_index + 3,2))
       
       destination_subtree = subtree:add(destination_dps, buffer(packet_index + 5,6)):set_text("Destination DPS: " .. destination)                                                                                        
@@ -599,11 +600,11 @@ local my_info = {
         then
           message_command_subtree:add(message_data_file_type, buffer(packet_index + 22,2))
           message_command_subtree:add(message_data_file_function, buffer(packet_index + 24,2))
-          if length - 27 > 0 then
-            message_command_subtree:add(message_data_file_data, buffer(packet_index + 26,length - 27))
+          if buffer(packet_index + 24,2):uint() == 3 
+            then
+            message_command_subtree:add(message_data_file_data, buffer(packet_index + 26, length_data - 23))
           end
-          -- What is going on here... need to revisit this one
-          packet_index = length - 1
+          packet_index = packet_index + 26 + length_data - 23
         end
 
       if buffer(packet_start + 20,2):uint() == 0x010b
