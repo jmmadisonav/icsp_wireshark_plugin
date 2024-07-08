@@ -499,7 +499,8 @@ local my_info = {
         end
 
       if mc == "Request Devices Online" or 
-         mc == "Request Devices Online EOT"
+         mc == "Request Devices Online EOT" or
+         mc == "Restart"
           then 
           packet_index = length - 1
       end
@@ -510,14 +511,14 @@ local my_info = {
         packet_index = packet_index + 26
         end
 
-      if mc == "Request Dynamice Device (Device -> Master)"
+      if mc == "Request Dynamic Device (Device -> Master)"
         then
           message_command_subtree:add(message_data_proposed_device, buffer(packet_index + 22,2))
           message_command_subtree:add(message_data_extended_address_type, buffer(packet_index + 24,1))
           message_command_subtree:add(message_data_extended_address_length, buffer(packet_index + 25,1))
           -- probably should handle other types...
           message_command_subtree:add(message_data_ipv4_address, buffer(packet_index + 26,4))
-          packet_index = packet_index + 30
+          packet_index = length - 1 
         end
 
       if mc == "Pass Through"
