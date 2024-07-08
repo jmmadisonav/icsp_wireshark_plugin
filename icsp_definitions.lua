@@ -78,6 +78,7 @@ message_commands = {
     [0x010b] = "Undocumented",
     [0x010c] = "Undocumented",
     [0x010d] = "Undocumented",
+    [0x00a8] = "Undocumented",
     [0x0105] = "Request Asynchronous Notification List",
     [0x0106] = "Asynchronous Notification List",
     [0x0107] = "Add/modify asynchronous Notification List",

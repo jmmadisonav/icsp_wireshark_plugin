@@ -92,6 +92,7 @@ local my_info = {
   message_data_file_type = ProtoField.uint16("icsp.message_data_file_type", "File Type", base.HEX, file_types)
   message_data_file_function = ProtoField.uint16("icsp.message_data_file_function", "File Function", base.HEX)
   message_data_file_data = ProtoField.none("icsp.message_data_file_data", "File data", base.HEX)
+  message_data_debug = ProtoField.none("icsp.debug", "Debug", base.ACSII)
 
   icsp_protocol.fields = {protocol_field, length_of_data, flags, destination_dps, destination_device, destination_port, 
                           destination_system, source_dps, source_device, source_port, source_system, allowed_hop_count,
@@ -111,7 +112,7 @@ local my_info = {
                           message_data_notification_total_count, message_data_notification_this_index, message_data_notification_flag,
                           message_data_notification_bits, message_data_proposed_device, message_data_pass_through_enable, 
                           message_data_message_count, message_data_messages, message_data_configuration_flag, message_data_device_number,
-                          message_data_file_type, message_data_file_function, message_data_file_data}
+                          message_data_file_type, message_data_file_function, message_data_file_data, message_data_debug}
 
   checksum_warning = ProtoExpert.new("checksum", "Invalid Checksum", expert.group.CHECKSUM, expert.severity.WARN )
 
@@ -119,16 +120,28 @@ local my_info = {
 
   function icsp_protocol.dissector(buffer, pinfo, tree)
     length = buffer:len()
-    local packet_start = 0
-    local packet_index = 0
+    packet_start = 0
+    packet_index = 0
+    loop_num = 0
+    first_packet_length = 0
     if length == 0 then return end
 
     while( packet_start < length ) do
-      local subtree = tree:add(icsp_protocol, buffer())
+      loop_num = loop_num + 1
+      -- if loop_num == 2
+      --   then
+      --     if packet_index ~= first_packet_length
+      --       then
+      --         return
+      --       end
+      --   end
+      local subtree = tree:add(icsp_protocol, buffer(packet_start, buffer(packet_index + 1,2):uint() + 4))
+      -- first_packet_length = buffer(packet_index + 1,2):uint() + 4
       pinfo.cols.protocol = "ICSP"
 
       source, destination = get_source_and_destination(buffer)
       subtree:set_text('ICSP Packet ' .. source .. " --> " .. destination)
+      --  .. " loop: " .. loop_num)
       subtree:add(protocol_field, buffer(packet_index + 0,1))
       subtree:add(length_of_data, buffer(packet_index + 1,2))
       subtree:add(flags, buffer(packet_index + 3,2))
@@ -232,9 +245,14 @@ local my_info = {
         then -- 0x0090
           message_command_subtree:add(message_data_device, buffer(packet_index + 22,2))
           message_command_subtree:add(message_data_system, buffer(packet_index + 24,2))
-          message_command_subtree:add(message_data_port_count, buffer(packet_index + 26,2))
-          -- I don't think I have gotten all the data here
-          packet_index = length - 1
+          -- Sometimes there is a port count sometime not
+          if packet_index + 26 > packet_start + buffer(packet_index + 1,2):uint() + 2
+            then
+              packet_index = packet_index + 26
+            else
+              message_command_subtree:add(message_data_port_count, buffer(packet_index + 26,2))
+              packet_index = packet_index + 28
+            end
         end
 
       if mc == "Request Output Channnel Count (Master -> Master)" or
@@ -371,7 +389,7 @@ local my_info = {
             -- I don't know what to do with this address lets skip it...
             print("Extended address " .. buffer(current_index, buffer(current_index-1,1):uint()))
             -- message_command_subtree:add(skipped_bytes, buffer(current_index-1,1):uint())
-            -- current_index = current_index + buffer(current_index-1,1):uint()
+            current_index = current_index + buffer(current_index-1,1):uint()
           end
           -- Set the packet_index to the current index 
           packet_index = current_index
@@ -379,59 +397,59 @@ local my_info = {
 
       if mc == "Device Info EOT (Master -> Device)"
         then
-          message_command_subtree:add(message_data_device, buffer(22,2))
-          message_command_subtree:add(message_data_system, buffer(24,2))
+          message_command_subtree:add(message_data_device, buffer(packet_index + 22,2))
+          message_command_subtree:add(message_data_system, buffer(packet_index + 24,2))
           packet_index = packet_index + 26
         end
 
       if mc == "Request Master Status (Device -> Master, Master -> Master)"
         then
-          message_command_subtree:add(message_data_system, buffer(22,2))
+          message_command_subtree:add(message_data_system, buffer(packet_index + 22,2))
           packet_index = packet_index + 24
         end
 
       if mc == "Master Status (Device -> Master, Master -> Master)"
         then
-          message_command_subtree:add(message_data_system, buffer(22,2))
-          message_command_subtree:add(message_data_system_status, buffer(24,2))
-          start_string, string_length, current_index = find_index_of_next_null(buffer, 26)
+          message_command_subtree:add(message_data_system, buffer(packet_index + 22,2))
+          message_command_subtree:add(message_data_system_status, buffer(packet_index + 24,2))
+          start_string, string_length, current_index = find_index_of_next_null(buffer, packet_index + 26)
           message_command_subtree:add(message_data_status_string, buffer(start_string, string_length))
           packet_index = current_index
         end
 
       if mc == "Internal Diagnostic"
         then
-          message_command_subtree:add(message_data_diagnostic_object_id, buffer(22,2))
-          message_command_subtree:add(message_data_diagnostic_severity, buffer(24,2))
-          start_string, string_length, current_index = find_index_of_next_null(buffer, 26)
+          message_command_subtree:add(message_data_diagnostic_object_id, buffer(packet_index + 22,2))
+          message_command_subtree:add(message_data_diagnostic_severity, buffer(packet_index + 24,2))
+          start_string, string_length, current_index = find_index_of_next_null(buffer, packet_index + 26)
           message_command_subtree:add(message_data_diagnostic_string, buffer(start_string, string_length))
           packet_index = current_index
         end
 
       if mc == "Request Diagnostic Information"
         then
-          message_command_subtree:add(message_data_diagnostic_flag, buffer(22,2))
+          message_command_subtree:add(message_data_diagnostic_flag, buffer(packet_index + 22,2))
           packet_index = packet_index + 24
         end
 
       if mc == "Asynchronous Notification List"
         then
-          message_command_subtree:add(message_data_notification_total_count, buffer(22,2))
-          message_command_subtree:add(message_data_notification_this_index, buffer(24,2))
-          message_command_subtree:add(message_data_device, buffer(26,2))
-          message_command_subtree:add(message_data_port, buffer(28,2))
-          message_command_subtree:add(message_data_system, buffer(30,2))
-          message_command_subtree:add(message_data_notification_flag, buffer(32,4))
+          message_command_subtree:add(message_data_notification_total_count, buffer(packet_index + 22,2))
+          message_command_subtree:add(message_data_notification_this_index, buffer(packet_index + 24,2))
+          message_command_subtree:add(message_data_device, buffer(packet_index + 26,2))
+          message_command_subtree:add(message_data_port, buffer(packet_index + 28,2))
+          message_command_subtree:add(message_data_system, buffer(packet_index + 30,2))
+          message_command_subtree:add(message_data_notification_flag, buffer(packet_index + 32,4))
           packet = packet_index + 36
         end
 
       if mc == "Add/modify asynchronous Notification List"
         then
-          message_command_subtree:add(message_data_device, buffer(22,2))
-          message_command_subtree:add(message_data_port, buffer(24,2))
-          message_command_subtree:add(message_data_system, buffer(26,2))
+          message_command_subtree:add(message_data_device, buffer(packet_index + 22,2))
+          message_command_subtree:add(message_data_port, buffer(packet_index + 24,2))
+          message_command_subtree:add(message_data_system, buffer(packet_index + 26,2))
           
-          notification_bits = message_command_subtree:add(message_data_notification_flag, buffer(28,4))
+          notification_bits = message_command_subtree:add(message_data_notification_flag, buffer(packet_index + 28,4))
           my_undefined_bits = ""
           for i=0, 18
             do
@@ -439,99 +457,98 @@ local my_info = {
                 then
                   my_undefined_bits = my_undefined_bits .. " "
                 end
-              my_undefined_bits = my_undefined_bits .. buffer(28,4):bitfield(i,1)
+              my_undefined_bits = my_undefined_bits .. buffer(packet_index + 28,4):bitfield(i,1)
             end
-
-
+  
           notification_bits:add(message_data_notification_bits):set_text(my_undefined_bits ..                                       ". .... .... .... = Undefined Bits")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... ..." .. buffer(28,4):bitfield(19,1) .. " .... .... .... = Custom messages")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... " .. buffer(28,4):bitfield(20,1) .. "... .... .... = Status messages")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... ." .. buffer(28,4):bitfield(21,1) .. ".. .... .... = Commands to device")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .." .. buffer(28,4):bitfield(22,1) .. ". .... .... = Commands from device")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... ..." .. buffer(28,4):bitfield(23,1) .. " .... .... = Strings to device")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... " .. buffer(28,4):bitfield(24,1) .. "... .... = Strings from device")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... ." .. buffer(28,4):bitfield(25,1) .. ".. .... = Level changes to device")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... .." .. buffer(28,4):bitfield(26,1) .. ". .... = Level changes from device")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... ..." .. buffer(28,4):bitfield(27,1) .. " .... = Feedback channel changes")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... .... " .. buffer(28,4):bitfield(28,1) .. "... = Output channel changes")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... .... ." .. buffer(28,4):bitfield(29,1) .. ".. = Input channel changes")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... .... .." .. buffer(28,4):bitfield(30,1) .. ". = Configuration messages")
-          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... .... ..." .. buffer(28,4):bitfield(31,1) .. " = Online/offline messages")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... ..." .. buffer(packet_index + 28,4):bitfield(19,1) .. " .... .... .... = Custom messages")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... " .. buffer(packet_index + 28,4):bitfield(20,1) .. "... .... .... = Status messages")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... ." .. buffer(packet_index + 28,4):bitfield(21,1) .. ".. .... .... = Commands to device")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .." .. buffer(packet_index + 28,4):bitfield(22,1) .. ". .... .... = Commands from device")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... ..." .. buffer(packet_index + 28,4):bitfield(23,1) .. " .... .... = Strings to device")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... " .. buffer(packet_index + 28,4):bitfield(24,1) .. "... .... = Strings from device")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... ." .. buffer(packet_index + 28,4):bitfield(25,1) .. ".. .... = Level changes to device")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... .." .. buffer(packet_index + 28,4):bitfield(26,1) .. ". .... = Level changes from device")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... ..." .. buffer(packet_index + 28,4):bitfield(27,1) .. " .... = Feedback channel changes")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... .... " .. buffer(packet_index + 28,4):bitfield(28,1) .. "... = Output channel changes")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... .... ." .. buffer(packet_index + 28,4):bitfield(29,1) .. ".. = Input channel changes")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... .... .." .. buffer(packet_index + 28,4):bitfield(30,1) .. ". = Configuration messages")
+          notification_bits:add(message_data_notification_bits):set_text(".... .... .... .... .... .... .... ..." .. buffer(packet_index + 28,4):bitfield(31,1) .. " = Online/offline messages")
           packet_index = packet_index + 32
         end
 
 
       if mc == "Ping Response" then
-        message_command_subtree:add(message_data_device, buffer(22,2))
-        message_command_subtree:add(message_data_system, buffer(24,2))
-        message_command_subtree:add(message_data_manufacture_id, buffer(26,2))
-        message_command_subtree:add(message_data_device_id, buffer(28,2))
-        message_command_subtree:add(message_data_extended_address_type, buffer(30,1))
-        message_command_subtree:add(message_data_extended_address_length, buffer(31,1))
-        message_command_subtree:add(message_data_ipv4_address, buffer(32,4))
+        message_command_subtree:add(message_data_device, buffer(packet_index + 22,2))
+        message_command_subtree:add(message_data_system, buffer(packet_index + 24,2))
+        message_command_subtree:add(message_data_manufacture_id, buffer(packet_index + 26,2))
+        message_command_subtree:add(message_data_device_id, buffer(packet_index + 28,2))
+        message_command_subtree:add(message_data_extended_address_type, buffer(packet_index + 30,1))
+        message_command_subtree:add(message_data_extended_address_length, buffer(packet_index + 31,1))
+        message_command_subtree:add(message_data_ipv4_address, buffer(packet_index + 32,4))
         packet_index = packet_index + 36
         end
 
       if mc == "Ping Request" then -- 0x0501
-        message_command_subtree:add(message_data_device, buffer(22,2))
-        message_command_subtree:add(message_data_system, buffer(24,2))
+        message_command_subtree:add(message_data_device, buffer(packet_index + 22,2))
+        message_command_subtree:add(message_data_system, buffer(packet_index + 24,2))
         packet_index = packet_index + 26
         end
 
       if mc == "Request Dynamice Device (Device -> Master)"
         then
-          message_command_subtree:add(message_data_proposed_device, buffer(22,2))
-          message_command_subtree:add(message_data_extended_address_type, buffer(24,1))
-          message_command_subtree:add(message_data_extended_address_length, buffer(25,1))
+          message_command_subtree:add(message_data_proposed_device, buffer(packet_index + 22,2))
+          message_command_subtree:add(message_data_extended_address_type, buffer(packet_index + 24,1))
+          message_command_subtree:add(message_data_extended_address_length, buffer(packet_index + 25,1))
           -- probably should handle other types...
-          message_command_subtree:add(message_data_ipv4_address, buffer(26,4))
+          message_command_subtree:add(message_data_ipv4_address, buffer(packet_index + 26,4))
           packet_index = packet_index + 30
         end
 
       if mc == "Pass Through"
         then
-          message_command_subtree:add(source_device, buffer(22,2))
-          message_command_subtree:add(destination_device, buffer(24,2))
-          message_command_subtree:add(destination_port, buffer(26,2))
-          message_command_subtree:add(destination_system, buffer(28,2))
-          message_command_subtree:add(message_data_pass_through_enable, buffer(30,1))
+          message_command_subtree:add(source_device, buffer(packet_index + 22,2))
+          message_command_subtree:add(destination_device, buffer(packet_index + 24,2))
+          message_command_subtree:add(destination_port, buffer(packet_index + 26,2))
+          message_command_subtree:add(destination_system, buffer(packet_index + 28,2))
+          message_command_subtree:add(message_data_pass_through_enable, buffer(packet_index + 30,1))
           packet_index = packet_index + 31
         end
 
       if mc == "Request Notification"
         then
-          message_command_subtree:add(destination_system, buffer(22,2))
-          message_command_subtree:add(destination_device, buffer(24,2))
-          message_command_subtree:add(source_system, buffer(26,2))
-          message_command_subtree:add(source_device, buffer(28,2))
-          message_command_subtree:add(message_data_message_count, buffer(30,2))
-          message_command_subtree:add(message_data_messages, buffer(32, buffer(30,2):uint()))
-          packet_index = packet_index + buffer(30,2):uint()
+          message_command_subtree:add(destination_system, buffer(packet_index + 22,2))
+          message_command_subtree:add(destination_device, buffer(packet_index + 24,2))
+          message_command_subtree:add(source_system, buffer(packet_index + 26,2))
+          message_command_subtree:add(source_device, buffer(packet_index + 28,2))
+          message_command_subtree:add(message_data_message_count, buffer(packet_index + 30,2))
+          message_command_subtree:add(message_data_messages, buffer(packet_index + 32, buffer(packet_index + 30,2):uint()))
+          packet_index = packet_index + buffer(packet_index + 30,2):uint()
         end
 
       if mc == "Blink" then
-        message_command_subtree:add(blink_heartbeat, buffer(22,1))
-        LED_subtree = message_command_subtree:add(blink_LED, buffer(23,1)):set_text("LED " .. "(0x" .. buffer(23,1) .. ")")
-        LED_subtree:add(blink_heartbeat, buffer(23,1)):set_text(buffer(23, 1):bitfield(0, 1) .. "... .... = Forced Device Unconfigure/Reset")
+        message_command_subtree:add(blink_heartbeat, buffer(packet_index + 22,1))
+        LED_subtree = message_command_subtree:add(blink_LED, buffer(packet_index + 23,1)):set_text("LED " .. "(0x" .. buffer(packet_index + 23,1) .. ")")
+        LED_subtree:add(blink_heartbeat, buffer(packet_index + 23,1)):set_text(buffer(packet_index + 23, 1):bitfield(0, 1) .. "... .... = Forced Device Unconfigure/Reset")
         
-        LED_subtree:add(blink_heartbeat, buffer(23,1)):set_text("." .. buffer(23, 1):bitfield(1, 1) ..
-                                                                      buffer(23, 1):bitfield(2, 1) ..
-                                                                      buffer(23, 1):bitfield(3, 1) ..
-                                                                      " " ..
-                                                                      buffer(23, 1):bitfield(4, 1) ..
-                                                                      buffer(23, 1):bitfield(5, 1) ..
-                                                                      buffer(23, 1):bitfield(6, 1) ..
-                                                                      "." .. " = Reservered ")
-        LED_subtree:add(blink_heartbeat, buffer(23,1)):set_text(".... ..." .. buffer(23, 1):bitfield(7, 1) .. " = Bus LED: " .. buffer(23, 1):bitfield(7, 1))
-        message_command_subtree:add(message_data_month, buffer(24,1))
-        message_command_subtree:add(message_data_day, buffer(25,1))
-        message_command_subtree:add(message_data_year, buffer(26,2))
-        message_command_subtree:add(message_data_hour, buffer(28,1))
-        message_command_subtree:add(message_data_minute, buffer(29,1))
-        message_command_subtree:add(message_data_second, buffer(30,1))
-        message_command_subtree:add(message_data_day_of_week, buffer(31,1))
-        message_command_subtree:add(message_data_outside_temperature, buffer(32,2))
-        start_string, string_length, current_index = find_index_of_next_null(buffer, 34)
+        LED_subtree:add(blink_heartbeat, buffer(packet_index + 23,1)):set_text("." .. buffer(packet_index + 23, 1):bitfield(1, 1) ..
+                                                                                      buffer(packet_index + 23, 1):bitfield(2, 1) ..
+                                                                                      buffer(packet_index + 23, 1):bitfield(3, 1) ..
+                                                                                      " " ..
+                                                                                      buffer(packet_index + 23, 1):bitfield(4, 1) ..
+                                                                                      buffer(packet_index + 23, 1):bitfield(5, 1) ..
+                                                                                      buffer(packet_index + 23, 1):bitfield(6, 1) ..
+                                                                                      "." .. " = Reservered ")
+        LED_subtree:add(blink_heartbeat, buffer(packet_index + 23,1)):set_text(".... ..." .. buffer(packet_index + 23, 1):bitfield(7, 1) .. " = Bus LED: " .. buffer(packet_index + 23, 1):bitfield(7, 1))
+        message_command_subtree:add(message_data_month, buffer(packet_index + 24,1))
+        message_command_subtree:add(message_data_day, buffer(packet_index + 25,1))
+        message_command_subtree:add(message_data_year, buffer(packet_index + 26,2))
+        message_command_subtree:add(message_data_hour, buffer(packet_index + 28,1))
+        message_command_subtree:add(message_data_minute, buffer(packet_index + 29,1))
+        message_command_subtree:add(message_data_second, buffer(packet_index + 30,1))
+        message_command_subtree:add(message_data_day_of_week, buffer(packet_index + 31,1))
+        message_command_subtree:add(message_data_outside_temperature, buffer(packet_index + 32,2))
+        start_string, string_length, current_index = find_index_of_next_null(buffer, packet_index + 34)
         
         message_command_subtree:add(message_data_text_date_string, buffer(start_string, string_length))
         -- -- After this are three 00, 
@@ -545,47 +562,47 @@ local my_info = {
         -- and the model in a null terminated string
         start_string, string_length, current_index = find_index_of_next_null(buffer, current_index)
         message_command_subtree:add(message_data_device_model, buffer(start_string, string_length)) 
-        packet_index = packet_index + current_index
+        packet_index = current_index
         end
 
     
       if mc == "Set Device Number"
         then
-          message_command_subtree:add(message_data_configuration_flag, buffer(22,1))
-          message_command_subtree:add(message_data_device_number, buffer(23,2))
-          message_command_subtree:add(message_data_system, buffer(25,2))
+          message_command_subtree:add(message_data_configuration_flag, buffer(packet_index + 22,1))
+          message_command_subtree:add(message_data_device_number, buffer(packet_index + 23,2))
+          message_command_subtree:add(message_data_system, buffer(packet_index + 25,2))
           packet_index = packet_index + 27
         end
     
       if mc == "Set Serial Number"
         then
-          message_command_subtree:add(message_data_serial_number, buffer(22,2))
+          message_command_subtree:add(message_data_serial_number, buffer(packet_index + 22,2))
           packet_index = packet_index + 24
         end
       if mc == "File Transfer"
         then
-          message_command_subtree:add(message_data_file_type, buffer(22,2))
-          message_command_subtree:add(message_data_file_function, buffer(24,2))
+          message_command_subtree:add(message_data_file_type, buffer(packet_index + 22,2))
+          message_command_subtree:add(message_data_file_function, buffer(packet_index + 24,2))
           if length - 27 > 0 then
-            message_command_subtree:add(message_data_file_data, buffer(26,length - 27))
+            message_command_subtree:add(message_data_file_data, buffer(packet_index + 26,length - 27))
           end
           -- What is going on here... need to revisit this one
           packet_index = length - 1
         end
 
-      if buffer(20,2):uint() == 0x010b
+      if buffer(packet_start + 20,2):uint() == 0x010b
         then -- Undocumented
-        message_command_subtree:add(skipped_bytes, buffer(22, 2))
+        message_command_subtree:add(skipped_bytes, buffer(packet_index + 22, 2))
         packet_index = packet_index + 24
         end
 
-      if buffer(20,2):uint() == 0x010c
+      if buffer(packet_start + 20,2):uint() == 0x010c
         then -- Undocumented looks like program name
-          message_command_subtree:add(skipped_bytes, buffer(22, 2))
-          message_command_subtree:add(skipped_bytes, buffer(24, 2))
-          message_command_subtree:add(skipped_bytes, buffer(26, 2))
-          message_command_subtree:add(skipped_bytes, buffer(28, 2))
-          start_string, string_length, current_index = find_index_of_next_null(buffer, 30)
+          message_command_subtree:add(skipped_bytes, buffer(packet_index + 22, 2))
+          message_command_subtree:add(skipped_bytes, buffer(packet_index + 24, 2))
+          message_command_subtree:add(skipped_bytes, buffer(packet_index + 26, 2))
+          message_command_subtree:add(skipped_bytes, buffer(packet_index + 28, 2))
+          start_string, string_length, current_index = find_index_of_next_null(buffer, packet_index + 30)
           message_command_subtree:add(message_data_device_name, buffer(start_string, string_length))
           start_string, string_length, current_index = find_index_of_next_null(buffer, current_index)
           message_command_subtree:add(message_data_program_info, buffer(start_string, string_length))
@@ -618,16 +635,24 @@ local my_info = {
         packet_index = current_index
         end
 
-      
-      
-        my_checksum = calculate_iscp_checksum(buffer(packet_start, packet_index))
+
+       if buffer(packet_start + 20,2):uint() == 0x00a8
+        then -- Undocumented
+        message_command_subtree:add(skipped_bytes, buffer(packet_index + 22, 4))
+        packet_index = packet_index + 26
+        end
+
+      my_checksum = calculate_iscp_checksum(buffer(packet_start, packet_index - packet_start))
       if my_checksum == buffer(packet_index, 1):uint() then
         subtree:add(message_data_checksum, buffer(packet_index, 1)):set_text("Checksum: Valid (0x" .. buffer(packet_index, 1) .. ")")
       else
         subtree:add(message_data_checksum, buffer(packet_index, 1)):set_text("Checksum: Bad (0x" .. buffer(packet_index, 1) .. ")")
         subtree:add_proto_expert_info(checksum_warning)
       end
-      packet_start = length
+      packet_index = packet_index + 1
+      packet_start = packet_index
+      -- subtree:add(message_data_debug):set_text("Packet Index is " .. packet_index .. " Packet Start is " .. packet_start)
+      -- if loop_num >  then return end
     end
   end
   
