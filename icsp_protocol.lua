@@ -159,15 +159,20 @@ local my_info = {
       subtree:add(message_id, buffer(packet_index + 18,2))
       message_command_subtree = subtree:add(message_command, buffer(packet_index + 20,2))
       mc = message_commands[buffer(packet_index + 20,2):uint()]
+      pinfo.cols.info = mc
 
       if mc == "Ack"
         then
           packet_index = packet_index + 22
         end
 
-      if mc == "Input Channel:On Status" or
+      if mc == "Input Channel:On" or
+        mc == "Input Channel:On Status" or
+        mc == "Input Channel:Off" or
         mc == "Input Channel:Off Status" or
+        mc == "Output Channel:On" or
         mc == "Output Channel:On Status" or
+        mc == "Output Channel:Off" or
         mc == "Output Channel:Off Status" or
         mc == "Input/Output Channel:On Status" or
         mc == "Input/Output Channel:Off Status" or
@@ -501,6 +506,7 @@ local my_info = {
 
       if mc == "Request Devices Online" or 
          mc == "Request Devices Online EOT" or
+         mc == "Completion Code" or
          mc == "Restart"
           then 
           packet_index = length - 1
