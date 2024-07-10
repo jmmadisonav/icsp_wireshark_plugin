@@ -92,6 +92,10 @@ local my_info = {
   message_data_file_type = ProtoField.uint16("icsp.message_data_file_type", "File Type", base.HEX, file_types)
   message_data_file_function = ProtoField.uint16("icsp.message_data_file_function", "File Function", base.HEX)
   message_data_file_data = ProtoField.none("icsp.message_data_file_data", "File data", base.HEX)
+  message_data_total_count = ProtoField.uint16("icsp.total_count", "Total Count", base.DEC)
+  message_data_this_index = ProtoField.uint16("icsp.this_index", "This Index", base.DEC)
+  message_data_delete_flag = ProtoField.uint16("icsp.delete_flag", "Delete Flag", base.HEX)
+
   message_data_debug = ProtoField.none("icsp.debug", "Debug", base.ACSII)
 
   icsp_protocol.fields = {protocol_field, length_of_data, flags, destination_dps, destination_device, destination_port, 
@@ -112,7 +116,8 @@ local my_info = {
                           message_data_notification_total_count, message_data_notification_this_index, message_data_notification_flag,
                           message_data_notification_bits, message_data_proposed_device, message_data_pass_through_enable, 
                           message_data_message_count, message_data_messages, message_data_configuration_flag, message_data_device_number,
-                          message_data_file_type, message_data_file_function, message_data_file_data, message_data_debug}
+                          message_data_file_type, message_data_file_function, message_data_file_data, message_data_total_count,
+                          message_data_this_index, message_data_delete_flag, message_data_debug}
 
   checksum_warning = ProtoExpert.new("checksum", "Invalid Checksum", expert.group.CHECKSUM, expert.severity.WARN )
 
@@ -484,6 +489,35 @@ local my_info = {
           packet_index = packet_index + 32
         end
 
+      if mc == "Add IP Address" then
+        message_command_subtree:add(message_data_flag, buffer(packet_index + 22, 1))
+        message_command_subtree:add(message_data_port, buffer(packet_index + 23, 2))
+        start_string, string_length, current_index = find_index_of_next_null(buffer, packet_index + 25)
+        message_command_subtree:add(message_data_device_name, buffer(start_string, string_length))
+        packet_index = current_index
+      end
+
+      if mc == "Delete IP Address" then
+        message_command_subtree:add(message_data_delete_flag, buffer(packet_index + 22, 1))
+        message_command_subtree:add(message_data_flag, buffer(packet_index + 23, 1))
+        message_command_subtree:add(message_data_port, buffer(packet_index + 24, 2))
+        start_string, string_length, current_index = find_index_of_next_null(buffer, packet_index + 26)
+        message_command_subtree:add(message_data_device_name, buffer(start_string, string_length))
+        packet_index = current_index
+      end
+
+      if mc == "IP Address List" then
+        message_command_subtree:add(message_data_total_count, buffer(packet_index + 22, 2))
+        message_command_subtree:add(message_data_this_index, buffer(packet_index + 24, 2))
+        message_command_subtree:add(message_data_flag, buffer(packet_index + 26, 1))
+        message_command_subtree:add(message_data_port, buffer(packet_index + 27, 2))
+        start_string, string_length, current_index = find_index_of_next_null(buffer, packet_index + 29)
+        message_command_subtree:add(message_data_device_name, buffer(start_string, string_length))
+        start_string, string_length, current_index = find_index_of_next_null(buffer, current_index)
+        message_command_subtree:add(message_data_device_name, buffer(start_string, string_length))
+        -- Extra padding add 2?
+        packet_index = current_index + 2
+      end
 
       if mc == "Ping Response" then
         message_command_subtree:add(message_data_device, buffer(packet_index + 22,2))
@@ -506,6 +540,7 @@ local my_info = {
 
       if mc == "Request Devices Online" or 
          mc == "Request Devices Online EOT" or
+         mc == "Request Ip Address List" or
          mc == "Completion Code" or
          mc == "Restart"
           then 
