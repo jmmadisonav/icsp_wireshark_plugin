@@ -542,9 +542,10 @@ local my_info = {
          mc == "Request Devices Online EOT" or
          mc == "Request Ip Address List" or
          mc == "Completion Code" or
-         mc == "Restart"
+         mc == "Restart" or
+         mc == "Nak"
           then 
-          packet_index = length - 1
+          packet_index = packet_index + 22
       end
 
       if mc == "Ping Request" then -- 0x0501
@@ -648,6 +649,16 @@ local my_info = {
           packet_index = packet_index + 26 + length_data - 23
         end
 
+      if mc == "Undocumented 0x0601" then
+        message_command_subtree:add(skipped_bytes, buffer(packet_index + 22, 2))
+        packet_index = packet_index + 24
+      end
+
+      if mc == "Undocumented 0x0681" then
+        message_command_subtree:add(skipped_bytes, buffer(packet_index + 22, 18))
+        packet_index = packet_index + 40
+      end
+    
       if buffer(packet_start + 20,2):uint() == 0x010b
         then -- Undocumented
         message_command_subtree:add(skipped_bytes, buffer(packet_index + 22, 2))

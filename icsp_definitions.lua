@@ -82,7 +82,9 @@ message_commands = {
     [0x0105] = "Request Asynchronous Notification List",
     [0x0106] = "Asynchronous Notification List",
     [0x0107] = "Add/modify asynchronous Notification List",
-    [0x0108] = "Delete asynchronous Notification List"
+    [0x0108] = "Delete asynchronous Notification List",
+    [0x0601] = "Undocumented 0x0601",
+    [0x0681] = "Undocumented 0x0681"
 }
 
 value_type_specifiers = {
